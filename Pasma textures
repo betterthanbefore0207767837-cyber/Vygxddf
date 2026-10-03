@@ -1,0 +1,116 @@
+--// SKYBOX + TEXTURE REPLACEMENT
+
+local Lighting = game:GetService("Lighting")
+
+--// SKYBOX
+local skyData = {
+	SkyboxBk = "rbxassetid://7658055825",
+	SkyboxDn = "rbxassetid://7658055825",
+	SkyboxFt = "rbxassetid://7658055825",
+	SkyboxLf = "rbxassetid://7658055825",
+	SkyboxRt = "rbxassetid://7658055825",
+	SkyboxUp = "rbxassetid://7658055825"
+}
+
+local function applySkybox()
+	local sky = Lighting:FindFirstChildOfClass("Sky")
+
+	if not sky then
+		sky = Instance.new("Sky")
+		sky.Parent = Lighting
+	end
+
+	for property, value in pairs(skyData) do
+		sky[property] = value
+	end
+end
+
+applySkybox()
+
+--// KEEP SKYBOX ACTIVE
+Lighting.ChildRemoved:Connect(function(child)
+	if child:IsA("Sky") then
+		task.wait()
+		applySkybox()
+	end
+end)
+
+Lighting.ChildAdded:Connect(function(child)
+	if child:IsA("Sky") then
+		task.wait()
+		applySkybox()
+	end
+end)
+
+
+--// TEXTURE REPLACEMENT
+
+local function getAsset(url: string): string
+	local success, result = pcall(function()
+		if writefile and isfile and getcustomasset then
+			local fileName = "tex_" .. tostring(string.len(url) % 99999) .. "_" .. tostring(string.byte(url, 10) or 1) .. ".asset"
+			if not isfile(fileName) then
+				local data = game:HttpGet(url)
+				if data and #data > 80 then
+					writefile(fileName, data)
+				end
+			end
+			local asset = getcustomasset(fileName)
+			if asset and asset ~= "" then
+				return asset
+			end
+		end
+		return url
+	end)
+	return (success and result) or url
+end
+
+local Rules = {
+	{ids = {7658055825}, url = "https://raw.githubusercontent.com/pashagamer23221-spec/texture/refs/heads/main/texture.png"},
+}
+
+local IdMap: {[string]: string} = {}
+
+for _, rule in ipairs(Rules) do
+	local asset = getAsset(rule.url)
+	for _, id in ipairs(rule.ids) do
+		IdMap[tostring(id)] = asset
+	end
+end
+
+local function apply(obj: Instance)
+	if not obj then return end
+
+	local function replace(property: string)
+		local success, value = pcall(function()
+			return obj[property]
+		end)
+		if not success or type(value) ~= "string" then return end
+		local id = string.match(value, "%d+")
+		if id and IdMap[id] then
+			pcall(function()
+				obj[property] = IdMap[id]
+			end)
+		end
+	end
+
+	if obj:IsA("Sound") then
+		replace("SoundId")
+	elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+		replace("Image")
+	elseif obj:IsA("Decal") or obj:IsA("Texture") then
+		replace("Texture")
+	elseif obj:IsA("MeshPart") then
+		replace("TextureID")
+	end
+end
+
+task.wait(2)
+
+for _, v in ipairs(game:GetDescendants()) do
+	task.spawn(apply, v)
+end
+
+game.DescendantAdded:Connect(function(obj)
+	task.defer(apply, obj)
+end)
